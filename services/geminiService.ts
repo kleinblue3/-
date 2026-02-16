@@ -1,10 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { ReportData } from "../types";
 
-// Initialize the Google GenAI client
-// The API key is securely injected via process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const SYSTEM_INSTRUCTION = `
 你是一位专业的轻创业商业分析师，擅长为“小而美”的商业创意提供验证报告。
 你的目标受众是副业人群，报告风格需要专业、客观但易懂。
@@ -27,8 +23,14 @@ const SYSTEM_INSTRUCTION = `
 
 export const generateBusinessReport = async (idea: string, token: string): Promise<ReportData> => {
   try {
-    // Note: 'token' is kept in the signature for compatibility but not needed for direct SDK calls
-    // strictly speaking, but we verify the user in the UI.
+    // Check if process is defined to avoid ReferenceError in browser environments without polyfills
+    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : '';
+
+    if (!apiKey) {
+        throw new Error("Missing API Key");
+    }
+
+    const ai = new GoogleGenAI({ apiKey: apiKey });
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
