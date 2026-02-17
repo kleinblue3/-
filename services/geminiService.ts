@@ -1,6 +1,5 @@
 import { ReportData } from "../types";
 
-// 保持你最初能成功调用AI的指令（仅精简格式要求）
 const SYSTEM_INSTRUCTION = `
 你是一位专业的轻创业商业分析师，擅长为“小而美”的商业创意提供验证报告。
 你的目标受众是副业人群，报告风格需要专业、客观但易懂。
@@ -21,18 +20,14 @@ const SYSTEM_INSTRUCTION = `
 }
 `;
 
-// 你确认过的正确Worker地址
 const WORKER_URL = "https://throbbing-resonance-5fc7.952720063.workers.dev";
 
-// 回归最初能成功调用AI的核心逻辑
 export const generateBusinessReport = async (idea: string, token: string): Promise<ReportData> => {
   try {
-    // 1. 基础校验
     if (!WORKER_URL) {
       throw new Error("Missing Worker URL");
     }
 
-    // 2. 构造请求体（和你调用成功时的结构一致）
     const requestBody = {
       model: "glm-4-air",
       messages: [
@@ -41,40 +36,43 @@ export const generateBusinessReport = async (idea: string, token: string): Promi
       ]
     };
 
-    // 3. 调用Worker（仅保留核心fetch逻辑，去掉多余配置）
+    // 核心调用逻辑（和你成功时一致）
     const response = await fetch(WORKER_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
 
-    // 4. 响应状态校验
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Worker 请求失败: ${response.status} - ${errorText}`);
     }
 
-    // 5. 解析AI返回结果（和你调用成功时一致）
     const aiResponse = await response.json();
     let text = aiResponse.choices?.[0]?.message?.content || "";
     if (!text) {
       throw new Error("No response from AI");
     }
 
-    // 6. 仅做必要的JSON清理（解决解析问题，不额外改动）
-    // 提取最外层JSON + 去掉换行符（核心修复，不做多余操作）
+    // ========== 关键修复：解决JSON语法错误 ==========
+    // 1. 提取最外层JSON
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1) {
-      text = text.substring(firstBrace, lastBrace + 1).replace(/\n/g, " ").replace(/\r/g, " ");
+      text = text.substring(firstBrace, lastBrace + 1);
     }
+    // 2. 修复JSON语法错误：转义字段值里的未转义双引号、清理特殊字符
+    text = text
+      .replace(/([^\\])"/g, '$1\\"') // 转义未转义的双引号
+      .replace(/\n/g, " ") // 去掉换行
+      .replace(/\r/g, " ") // 去掉回车
+      .replace(/\t/g, " ") // 去掉制表符
+      .replace(/,\s*}/g, "}") // 修复逗号后直接跟}的错误
+      .replace(/,\s*]/g, "]"); // 修复逗号后直接跟]的错误
 
-    // 7. 解析JSON（保留基础解析，去掉复杂容错）
+    // 解析JSON（现在语法无错）
     const data: ReportData = JSON.parse(text);
 
-    // 8. 基础字段校验（保证返回合法）
     if (!data.title || !data.score) {
       throw new Error("Incomplete report data");
     }
