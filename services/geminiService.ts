@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { ReportData } from "../types";
 
 const SYSTEM_INSTRUCTION = `
@@ -15,55 +14,65 @@ const SYSTEM_INSTRUCTION = `
   "costs": "落地成本：一次性投入（金额区间+用途）、月度运营成本、首笔收入时间预估",
   "nextSteps": "下一步执行建议：分3阶段（1-7天 MVP验证、8-30天 流量闭环、31-90天 稳定变现）",
   "score": {
-    "total": 0, // 0-10分，整数
+    "total": 0,
     "details": "评分说明（维度：定位精准度、运营轻盈度、盈利可持续性、小红书适配度、个人启动门槛）"
   }
 }
 `;
 
+const WORKER_URL = "https://throbbing-resonance-5fc7.952720063.workers.dev";
+
 export const generateBusinessReport = async (idea: string, token: string): Promise<ReportData> => {
   try {
-    // Check if process is defined to avoid ReferenceError in browser environments without polyfills
-    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : '';
-
-    if (!apiKey) {
-        throw new Error("Missing API Key");
+    if (!WORKER_URL) {
+      throw new Error("Missing Worker URL");
     }
 
-    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const requestBody = {
+      model: "glm-4-air",
+      messages: [
+        { role: "system", content: SYSTEM_INSTRUCTION },
+        { role: "user", content: `请分析这个商业创意：${idea}` }
+      ]
+    };
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `请分析这个商业创意：${idea}`,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json", 
-        // We use responseMimeType to force JSON structure, eliminating parsing errors
+    const response = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify(requestBody),
+      timeout: 30000,
     });
 
-    const text = response.text;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Worker 请求失败: ${response.status} - ${errorText}`);
+    }
+
+    const aiResponse = await response.json();
+    const text = aiResponse.choices?.[0]?.message?.content;
+    
     if (!text) {
       throw new Error("No response from AI");
     }
 
     let data: ReportData;
     try {
-        data = JSON.parse(text);
+      data = JSON.parse(text);
     } catch (e) {
-        console.error("Failed to parse JSON", text);
-        throw new Error("AI output format error");
+      console.error("Failed to parse JSON", text);
+      throw new Error("AI output format error");
     }
 
-    // Basic validation
     if (!data.title || !data.score) {
-        throw new Error("Incomplete report data");
+      throw new Error("Incomplete report data");
     }
 
     return data;
 
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("AI API Error:", error);
     throw error;
   }
 };
