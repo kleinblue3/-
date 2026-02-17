@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserIcon, SparklesIcon, LightBulbIcon } from './components/Icons';
 import { generateBusinessReport } from './services/geminiService';
 import { AppState, ReportData } from './types';
 import { ReportDisplay } from './components/ReportDisplay';
 
-// Admin code for testing (Client-side validation)
-const TEST_CODE = '3388';
+// Admin code for unlimited usage
+const ADMIN_CODE = '3388';
+const MAX_USAGE = 2;
 
 export default function App() {
   const [idea, setIdea] = useState('');
@@ -14,17 +15,28 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [usageCount, setUsageCount] = useState(0);
+
+  // Check usage from local storage on load or verification
+  useEffect(() => {
+    if (isVerified && verificationCode !== ADMIN_CODE) {
+        const storedUsage = localStorage.getItem(`usage_${verificationCode}`);
+        setUsageCount(storedUsage ? parseInt(storedUsage, 10) : 0);
+    }
+  }, [isVerified, verificationCode]);
 
   const handleVerify = () => {
       if (!verificationCode) {
           setErrorMsg('请输入验证码');
           return;
       }
-      if (verificationCode === TEST_CODE) {
+      // Simple verification logic (Accepts Admin code or any 4-digit code for demo)
+      // In a real app, you would validate against a backend list.
+      if (verificationCode.length === 4) {
           setIsVerified(true);
           setErrorMsg(null);
       } else {
-          setErrorMsg('验证码无效');
+          setErrorMsg('请输入4位有效验证码');
       }
   };
 
@@ -39,35 +51,52 @@ export default function App() {
       return;
     }
 
+    // Usage check
+    if (verificationCode !== ADMIN_CODE && usageCount >= MAX_USAGE) {
+        setErrorMsg('该验证码的报告生成次数已用完 (限2次)');
+        return;
+    }
+
     setAppState(AppState.LOADING);
     setErrorMsg(null);
     setReportData(null);
 
-    // Timeout logic (45s to allow for worker cold starts)
+    // Timeout logic (90s) - Sync with service timeout
     const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT')), 45000)
+        setTimeout(() => reject(new Error('TIMEOUT')), 90000)
     );
 
     try {
-      // Pass the verification code as the token (or JWT placeholder)
       const data = await Promise.race([
         generateBusinessReport(idea, verificationCode),
         timeoutPromise
       ]) as ReportData;
+
+      // Increment usage if successful
+      if (verificationCode !== ADMIN_CODE) {
+          const newUsage = usageCount + 1;
+          setUsageCount(newUsage);
+          localStorage.setItem(`usage_${verificationCode}`, newUsage.toString());
+      }
 
       setReportData(data);
       setAppState(AppState.SUCCESS);
     } catch (err: any) {
       setAppState(AppState.ERROR);
       if (err.message === 'TIMEOUT') {
-        setErrorMsg('生成超时，请重试');
+        setErrorMsg('AI 思考时间较长，请检查网络或稍后重试');
       } else if (err.message?.includes('401') || err.message?.includes('403')) {
          setErrorMsg('验证失效，请刷新页面重新输入验证码');
       } else {
-        setErrorMsg('AI 服务暂时不可用，请稍后重试');
+        setErrorMsg(err.message || 'AI 服务暂时不可用，请稍后重试');
       }
       console.error(err);
     }
+  };
+
+  const getRemainingUsage = () => {
+      if (verificationCode === ADMIN_CODE) return 'unlimited';
+      return Math.max(0, MAX_USAGE - usageCount);
   };
 
   // Verification Screen
@@ -130,7 +159,9 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2 text-slate-500 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
                 <UserIcon />
-                <span className="text-xs font-medium">VIP / {verificationCode.slice(0,2)}**</span>
+                <span className="text-xs font-medium">
+                    {verificationCode === ADMIN_CODE ? '管理员' : `VIP / ${verificationCode.slice(0,2)}**`}
+                </span>
             </div>
         </div>
       </header>
@@ -146,7 +177,7 @@ export default function App() {
                 <span className="text-slate-800">生成一份商业报告</span>
             </h1>
             <p className="text-slate-500 text-sm font-medium">
-                基于2025-2026市场趋势的结构化分析
+                基于2025-2026市场趋势 · 拒绝纸上谈兵
             </p>
         </div>
 
@@ -161,7 +192,11 @@ export default function App() {
                     onChange={(e) => setIdea(e.target.value)}
                     maxLength={200}
                 ></textarea>
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-between items-center pt-2">
+                    <span className="text-xs font-medium text-pink-500">
+                         {verificationCode !== ADMIN_CODE && `剩余次数: ${Math.max(0, MAX_USAGE - usageCount)}`}
+                         {verificationCode === ADMIN_CODE && `无限模式`}
+                    </span>
                     <span className="text-xs text-slate-300 font-mono">{idea.length} / 200</span>
                 </div>
             </div>
@@ -170,8 +205,8 @@ export default function App() {
         {/* Action Button */}
         <button 
             onClick={handleGenerate}
-            disabled={appState === AppState.LOADING}
-            className="w-full bg-pink-400 hover:bg-pink-500 active:bg-pink-600 disabled:bg-pink-200 disabled:cursor-not-allowed text-white font-bold text-lg py-4 rounded-xl shadow-lg shadow-pink-200 transition-all duration-200 transform hover:-translate-y-1 active:translate-y-0"
+            disabled={appState === AppState.LOADING || (verificationCode !== ADMIN_CODE && usageCount >= MAX_USAGE)}
+            className="w-full bg-pink-400 hover:bg-pink-500 active:bg-pink-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-lg py-4 rounded-xl shadow-lg shadow-pink-200 transition-all duration-200 transform hover:-translate-y-1 active:translate-y-0"
         >
             {appState === AppState.LOADING ? (
                 <span className="flex items-center justify-center gap-2">
@@ -181,7 +216,7 @@ export default function App() {
                     </svg>
                     AI正在分析市场数据...
                 </span>
-            ) : '生成分析报告'}
+            ) : (verificationCode !== ADMIN_CODE && usageCount >= MAX_USAGE) ? '次数已用完' : '生成分析报告'}
         </button>
 
         {/* Hints / Errors */}
@@ -200,7 +235,7 @@ export default function App() {
 
         {/* Results Area */}
         {appState === AppState.SUCCESS && reportData && (
-            <ReportDisplay data={reportData} />
+            <ReportDisplay data={reportData} remainingUsage={getRemainingUsage()} />
         )}
 
       </main>
