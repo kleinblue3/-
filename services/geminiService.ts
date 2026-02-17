@@ -20,8 +20,7 @@ const SYSTEM_INSTRUCTION = `
 }
 `;
 
-const WORKER_URL = "throbbing-resonance-5fc7.952720063.workers.dev
-";
+const WORKER_URL = "https://throbbing-resonance-5fc7.952720063.workers.dev";
 
 export const generateBusinessReport = async (idea: string, token: string): Promise<ReportData> => {
   try {
@@ -37,14 +36,19 @@ export const generateBusinessReport = async (idea: string, token: string): Promi
       ]
     };
 
+    // 修复：原生fetch不支持timeout参数，用AbortController实现30秒超时
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     const response = await fetch(WORKER_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
-      timeout: 30000,
+      signal: controller.signal, // 绑定超时信号
     });
+    clearTimeout(timeoutId); // 清除超时定时器
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -52,11 +56,18 @@ export const generateBusinessReport = async (idea: string, token: string): Promi
     }
 
     const aiResponse = await response.json();
-    const text = aiResponse.choices?.[0]?.message?.content;
+    // 修复：增加空值判断，避免解构时报错
+    if (!aiResponse?.choices || aiResponse.choices.length === 0) {
+      throw new Error("AI返回格式异常，无choices字段");
+    }
     
+    let text = aiResponse.choices[0]?.message?.content || "";
     if (!text) {
       throw new Error("No response from AI");
     }
+
+    // 修复：过滤AI返回的多余文字（比如“好的，以下是分析：”），只保留JSON部分
+    text = text.replace(/^[\s\S]*?\{/, "{").replace(/\}[\s\S]*$/, "}");
 
     let data: ReportData;
     try {
