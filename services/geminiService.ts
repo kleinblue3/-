@@ -20,7 +20,7 @@ const SYSTEM_INSTRUCTION = `
 }
 `;
 
-const WORKER_URL = "https://throbbing-resonance-5fc7.952720063.workers.dev";
+const WORKER_URL = "https://throbbing-resonance-5fc7952720063.workers.dev";
 
 export const generateBusinessReport = async (idea: string, token: string): Promise<ReportData> => {
   try {
